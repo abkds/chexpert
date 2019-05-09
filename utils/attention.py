@@ -58,9 +58,9 @@ def flatten(x):
     return x.reshape(batch, heads, _h * _w, channels)
 
 
-def split_heads(x, n):
+def split_last_dimension(x, n):
     """
-    Split the tensor into multiple heads
+    Split the last dimension of a tensor
 
     Args:
         x: A tensor of shape [..., m]
@@ -80,6 +80,23 @@ def split_heads(x, n):
     split_last = last // n
     first.extend([n, split_last])
     x.reshape(first)
+
+
+def split_heads(x, num_heads):
+    """
+    Split the tensor into multiple heads
+
+    Args:
+        x: A tensor of shape [batch, _h, _w, channels]
+        num_heads: Number of heads
+
+    Returns:
+        A tensor of shape [batch, head, _h, _w, channels/head]
+
+    Raise:
+        ValueError if channels is not divisible by num_heads
+    """
+    return torch.transpose(split_last_dimension(x, num_heads), 1, 3)
 
 
 class MultiHeadAttention(nn.Module):
@@ -114,3 +131,10 @@ class MultiHeadAttention(nn.Module):
         """
         # compute the query, key and values from input
         q, k, v = compute_qkv(input, self.conv_qk, self.conv_v)
+
+        # split heads for q, k and v
+        # after splitting shape is [batch, num_heads, _h, _w, channels /
+        # num_heads]
+        q = split_heads(q, num_heads)
+        k = split_heads(k, num_heads)
+        v = split_heads(v, num_heads)
