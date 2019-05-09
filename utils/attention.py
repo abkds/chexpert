@@ -38,6 +38,50 @@ def compute_qkv(input, conv_qk, conv_v):
     return q, k, v
 
 
+def flatten(x):
+    """
+    Flatten x
+       _       ____
+     /_/|     |    |
+    | | |  -> |    |
+    |_|/      |____|
+
+    Args:
+        x: A tensor of shape [batch, heads, _h, _w, channels]
+
+    Return
+                                        (_h x _w)
+        A tensor of shape [batch, heads, length, channels]
+    """
+    batch, heads, _h, _w, channels = x.shape
+
+    return x.reshape(batch, heads, _h * _w, channels)
+
+
+def split_heads(x, n):
+    """
+    Split the tensor into multiple heads
+
+    Args:
+        x: A tensor of shape [..., m]
+        n: Number of dimensions to split x into.
+
+    Returns:
+        A tensor of shape [..., n, m//n]
+
+    Raises:
+        ValueError if m is not divisible by n
+    """
+
+    if m % n != 0:
+        raise ValueError('%s is not divisible by %s' % (m, n))
+
+    first, last = list(x.shape[:-1]), x.shape[-1]
+    split_last = last // n
+    first.extend([n, split_last])
+    x.reshape(first)
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(self,
                  num_heads,
