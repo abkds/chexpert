@@ -143,6 +143,8 @@ def attention(q, k, v, dropout_rate=0.1):
     Return:
         A tensor of shape [batch, heads, _h, _w, channels_v]
     """
+    # store shape in which to return
+    v_shape = torch.Size(q)[:-1] + torch.size(v)[-1]
 
     # flatten
     q_, k_, v_ = [flatten(x) for x in (q, k, v)]
@@ -154,7 +156,7 @@ def attention(q, k, v, dropout_rate=0.1):
 
     w = dropout(w)
 
-    return bmm_(w, v_)
+    return bmm_(w, v_).reshape(v_shape)
 
 
 class MultiHeadAttention(nn.Module):
@@ -202,4 +204,3 @@ class MultiHeadAttention(nn.Module):
         # divide by √d_k
         q *= key_filters_per_head ** -0.5
 
-        
