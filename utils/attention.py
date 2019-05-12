@@ -96,7 +96,7 @@ def split_heads(x, num_heads):
     Raise:
         ValueError if channels is not divisible by num_heads
     """
-    return torch.transpose(split_last_dimension(x, num_heads), 1, 3)
+    return split_last_dimension(x, num_heads).permute(0, 3, 1, 2, 4)
 
 
 def bmm_(a, b):
@@ -159,6 +159,22 @@ def attention(q, k, v, dropout_rate=0.1):
     return bmm_(w, v_).reshape(v_shape)
 
 
+def combine_heads(x):
+    """
+    Combine attention heads
+
+    Args:
+        x: A input tensor of shape [batch, heads, _h, _w, channels/heads]
+
+    Reutrns:
+        A tensor of shape [batch, _h, _w, channels]
+    """
+
+    x = x.permute(0, 3, 1, 2, 4)
+    out_shape = x.shape[:-2] + torch.Size((x.shape[-2] * x.shape[-1]))
+    return x.reshape(out_shape)
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(self,
                  num_heads,
@@ -204,3 +220,11 @@ class MultiHeadAttention(nn.Module):
         # divide by √d_k
         q *= key_filters_per_head ** -0.5
 
+        # apply attention
+        attn = attention(q, k, v, 0.2)
+
+        # attn shape [batch, _h, _w, total_value_filters]
+        attn = combine_heads(attn)
+
+        attn = self.conv_out(attn)
+        return attn
