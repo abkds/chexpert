@@ -99,6 +99,64 @@ def split_heads(x, num_heads):
     return torch.transpose(split_last_dimension(x, num_heads), 1, 3)
 
 
+def bmm_(a, b):
+    """
+    Multiply two tensors of rank greater than 3
+
+    Args:
+        a: A tensor of shape [..., m, n]
+        b: A tensor of shape [..., n, p]
+
+    Returns:
+        A tensor of shape [..., m, p]
+
+    Raises:
+        ValueError if remaining shape except for the last two dimensions
+        are not same
+    """
+
+    if a.shape[:-2] != b.shape[:-2]:
+        raise ValueError(
+            """Remaining shape except the last two dimensions are not equal.
+                            Shape of a : %s
+                            Shape of b : %s
+                            """ %
+            (a.shape, b.shape))
+
+    a_ = a.view(-1, a.shape[-2], a.shape[-1])
+    b_ = b.view(-1, b.shape[-2], b.shape[-1])
+
+    out = torch.bmm(a_, b_)
+    out_shape = a.shape[:-2] + out.shape[-2:]
+    return out.reshape(out_shape)
+
+
+def attention(q, k, v, dropout_rate=0.1):
+    """
+    Self Attention mechanism
+
+    Args:
+        q: (query)  A tensor with shape [batch, heads, _h, _w, channels_k]
+        k: (keys)   A tensor with shape [batch, heads, _h, _w, channels_k]
+        v: (values) A tensor with shape [batch, heads, _h, _w, channels_v]
+
+    Return:
+        A tensor of shape [batch, heads, _h, _w, channels_v]
+    """
+
+    # flatten
+    q_, k_, v_ = [flatten(x) for x in (q, k, v)]
+
+    qk_t = bmm_(q_, k_.transpose(-2, -1))
+    w = F.softmax(qk_t, dim=-1)
+
+    dropout = nn.Dropout(dropout_rate)
+
+    w = dropout(w)
+
+    return bmm_(w, v_)
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(self,
                  num_heads,
@@ -135,6 +193,13 @@ class MultiHeadAttention(nn.Module):
         # split heads for q, k and v
         # after splitting shape is [batch, num_heads, _h, _w, channels /
         # num_heads]
-        q = split_heads(q, num_heads)
-        k = split_heads(k, num_heads)
-        v = split_heads(v, num_heads)
+        q = split_heads(q, self.num_heads)
+        k = split_heads(k, self.num_heads)
+        v = split_heads(v, self.num_heads)
+
+        key_filters_per_head = self.total_key_filters / self.num_heads
+
+        # divide by √d_k
+        q *= key_filters_per_head ** -0.5
+
+        
