@@ -15,7 +15,7 @@ def compute_qkv(input, conv_qk, conv_v):
     Computes the query, key and value vectors for input
 
     Args:
-        input: A tensor of shape [batch, _h, _w, channels]
+        input: A tensor of shape [batch, channels, _h, _w]
         conv_qk: A module list of conv layers for calculating
             query and keys, having total_key_filters as output channels
         conv_v: A conv layer for calculating values having total_value_filters
@@ -23,7 +23,9 @@ def compute_qkv(input, conv_qk, conv_v):
 
     Returns:
         A tuple (q, k, v) of tensors with the following shapes
-        [batch, _h, _w, total_key_filters], [batch, _h, _w, total_key_filters], [batch, _h, _w, total_value_filters]
+        q: [batch, total_key_filters, _h, _w]
+        k: [batch, total_key_filters, _h, _w]
+        v: [batch, total_value_filters, _h, _w]
 
     """
     # linear transformation for query
@@ -47,39 +49,15 @@ def flatten(x):
     |_|/      |____|
 
     Args:
-        x: A tensor of shape [batch, heads, _h, _w, channels]
+        x: A tensor of shape [batch, heads, channels, _h, _w]
 
     Return
                                         (_h x _w)
-        A tensor of shape [batch, heads, length, channels]
+        A tensor of shape [batch, heads, channels, length]
     """
-    batch, heads, _h, _w, channels = x.shape
+    batch, heads, channels, _h, _w = x.shape
 
-    return x.reshape(batch, heads, _h * _w, channels)
-
-
-def split_last_dimension(x, n):
-    """
-    Split the last dimension of a tensor
-
-    Args:
-        x: A tensor of shape [..., m]
-        n: Number of dimensions to split x into.
-
-    Returns:
-        A tensor of shape [..., n, m//n]
-
-    Raises:
-        ValueError if m is not divisible by n
-    """
-
-    if m % n != 0:
-        raise ValueError('%s is not divisible by %s' % (m, n))
-
-    first, last = list(x.shape[:-1]), x.shape[-1]
-    split_last = last // n
-    first.extend([n, split_last])
-    x.reshape(first)
+    return x.reshape(batch, heads, channels, _h * _w)
 
 
 def split_heads(x, num_heads):
@@ -87,16 +65,25 @@ def split_heads(x, num_heads):
     Split the tensor into multiple heads
 
     Args:
-        x: A tensor of shape [batch, _h, _w, channels]
+        x: A tensor of shape [batch, channel, _h, _w]
         num_heads: Number of heads
 
     Returns:
-        A tensor of shape [batch, head, _h, _w, channels/head]
+        A tensor of shape [batch, head, channels/head, _h, _w]
 
     Raise:
         ValueError if channels is not divisible by num_heads
     """
-    return split_last_dimension(x, num_heads).permute(0, 3, 1, 2, 4)
+    channels = x.shape[1]
+
+    if channels % num_heads != 0:
+        raise ValueError('%s is not divisible by %s' % (channels, num_heads))
+
+    channels_per_head = channels // num_heads
+    out_shape = x.shape[:1] + \
+        torch.Size((num_heads, channels_per_head)) + x.shape[2:]
+
+    return x.reshape(out_shape)
 
 
 def bmm_(a, b):
@@ -136,27 +123,30 @@ def attention(q, k, v, dropout_rate=0.1):
     Self Attention mechanism
 
     Args:
-        q: (query)  A tensor with shape [batch, heads, _h, _w, channels_k]
-        k: (keys)   A tensor with shape [batch, heads, _h, _w, channels_k]
-        v: (values) A tensor with shape [batch, heads, _h, _w, channels_v]
+        q: (query)  A tensor with shape [batch, heads, channels_k, _h, _w]
+        k: (keys)   A tensor with shape [batch, heads, channels_k, _h, _w]
+        v: (values) A tensor with shape [batch, heads, channels_v, _h, _w]
 
     Return:
         A tensor of shape [batch, heads, _h, _w, channels_v]
     """
     # store shape in which to return
-    v_shape = torch.Size(q)[:-1] + torch.size(v)[-1]
+    v_shape = q.shape[:2] + v.shape[2:3] + q.shape[3:]
 
     # flatten
     q_, k_, v_ = [flatten(x) for x in (q, k, v)]
 
-    qk_t = bmm_(q_, k_.transpose(-2, -1))
+    qk_t = bmm_(q_.permute(0, 1, 3, 2), k_)
     w = F.softmax(qk_t, dim=-1)
 
     dropout = nn.Dropout(dropout_rate)
 
     w = dropout(w)
 
-    return bmm_(w, v_).reshape(v_shape)
+    # shape [batch, heads, length, channels]
+    dot = bmm_(w, v_.permute(0, 1, 3, 2))
+
+    return dot.permute(0, 1, 3, 2).reshape(v_shape)
 
 
 def combine_heads(x):
@@ -164,14 +154,14 @@ def combine_heads(x):
     Combine attention heads
 
     Args:
-        x: A input tensor of shape [batch, heads, _h, _w, channels/heads]
+        x: A input tensor of shape [batch, heads, channels/heads, _h, _w]
 
     Reutrns:
-        A tensor of shape [batch, _h, _w, channels]
+        A tensor of shape [batch, channels, _h, _w]
     """
 
-    x = x.permute(0, 3, 1, 2, 4)
-    out_shape = x.shape[:-2] + torch.Size((x.shape[-2] * x.shape[-1]))
+    out_shape = x.shape[:1] + \
+        torch.Size((x.shape[1] * x.shape[2], )) + x.shape[3:]
     return x.reshape(out_shape)
 
 
@@ -187,6 +177,8 @@ class MultiHeadAttention(nn.Module):
         assert total_key_filters % num_heads == 0
         # We assume total_key_filters and total_value_filters to be same
         self.num_heads = num_heads
+        self.total_key_filters = total_key_filters
+        self.total_value_filters = total_value_filters
 
         # conv layers for images are like the linear
         # layers for text embeddings, query and key
@@ -209,8 +201,7 @@ class MultiHeadAttention(nn.Module):
         q, k, v = compute_qkv(input, self.conv_qk, self.conv_v)
 
         # split heads for q, k and v
-        # after splitting shape is [batch, num_heads, _h, _w, channels /
-        # num_heads]
+        # split shape [batch, heads, channels/heads, _h, _w]
         q = split_heads(q, self.num_heads)
         k = split_heads(k, self.num_heads)
         v = split_heads(v, self.num_heads)
@@ -228,3 +219,16 @@ class MultiHeadAttention(nn.Module):
 
         attn = self.conv_out(attn)
         return attn
+
+
+if name == '__main__':
+    multi_attn = MultiHeadAttention(
+        num_heads=8,
+        num_input_channels=3,
+        total_key_filters=32,
+        total_value_filters=32,
+        output_filters=32)
+    batch, h, w, channels = 10, 16, 16, 3
+    x = torch.rand(batch, channels, h, w)
+    out = multi_attn(x)
+    print(out.shape)
