@@ -221,7 +221,7 @@ class MultiHeadAttention(nn.Module):
         return attn
 
 
-if name == '__main__':
+if __name__ == '__main__':
     multi_attn = MultiHeadAttention(
         num_heads=8,
         num_input_channels=3,
