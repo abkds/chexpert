@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 
-from attention import MultiHeadAttention
+from model.attention import MultiHeadAttention
 
 
 class _DenseLayer(nn.Sequential):

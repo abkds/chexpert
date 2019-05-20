@@ -4,11 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 
-from densenet import DenseBlock, _Transition
-from attention import MultiHeadAttention
+from model.densenet import DenseBlock, _Transition
+from model.attention import MultiHeadAttention
 
 
-class AttnDenseNet(nn.Module):
+class _AttnDenseNet(nn.Module):
     r"""Densenet-BC + Attention model class, based on
 
     Args:
@@ -38,7 +38,7 @@ class AttnDenseNet(nn.Module):
             total_value_filters=32,
             output_filters=32):
 
-        super(AttnDenseNet, self).__init__()
+        super(_AttnDenseNet, self).__init__()
 
         # First convolution
         self.features = nn.Sequential(OrderedDict([
