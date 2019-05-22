@@ -6,7 +6,7 @@ from skimage import io, transform
 from torchvision.transforms import ToPILImage, Compose, Resize, ToTensor
 
 
-class ChexpertDataet(Dataset):
+class ChexpertDataset(Dataset):
     """ Chexpert dataset """
     def __init__(self, csv_file, column_name):
         """
