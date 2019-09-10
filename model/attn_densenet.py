@@ -42,7 +42,7 @@ class _AttnDenseNet(nn.Module):
 
         # First convolution
         self.features = nn.Sequential(OrderedDict([
-            ('conv0', nn.Conv2d(3, num_init_features, kernel_size=7, stride=2,
+            ('conv0', nn.Conv2d(1, num_init_features, kernel_size=7, stride=2,
                                 padding=3, bias=False)),
             ('norm0', nn.BatchNorm2d(num_init_features)),
             ('relu0', nn.ReLU(inplace=True)),
@@ -97,13 +97,19 @@ class _AttnDenseNet(nn.Module):
 def total_params(model):
     return sum(p.numel() for p in model.parameters())
 
+def get_img(path):
+    X = io.imread(path)
+    X.resize((*X.shape, 1))
+    tsfrm = Compose([ToPILImage(), Resize((160, 320)), ToTensor()])
+    return tsfrm(X)
+    
 
 # sample random input
 if __name__ == '__main__':
-    x = torch.rand(2, 3, 224, 224)
+    x = torch.rand(2, 1, 160, 160)
     num_classes = 3
-
-    net = AttnDenseNet(growth_rate=32,
+    
+    net = _AttnDenseNet(growth_rate=32,
                        block_config=(
                            6,
                            12,
@@ -119,4 +125,5 @@ if __name__ == '__main__':
                        output_filters=8)
     print(total_params(net))
     y = net(x)
+    print(y)
     print(y.shape)

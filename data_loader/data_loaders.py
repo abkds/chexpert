@@ -46,12 +46,13 @@ class ChexpertDataLoader(BaseDataLoader):
             data_dir,
             batch_size,
             column_name,
+            csv_file,
             shuffle=True,
             validation_split=0.0,
             num_workers=1,
             training=True):
         self.data_dir = data_dir
-        self.dataset = custom_datasets.ChexpertDataset(data_dir, column_name)
+        self.dataset = custom_datasets.ChexpertDataset(data_dir, column_name, csv_file)
         super(
             ChexpertDataLoader,
             self).__init__(
