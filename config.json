@@ -20,7 +20,7 @@
         "type": "ChexpertDataLoader",
         "args":{
             "data_dir": "data/",
-            "batch_size": 8,
+            "batch_size": 16,
             "shuffle": false,
             "validation_split": 0,
             "num_workers": 4,
@@ -43,8 +43,8 @@
     "optimizer": {
         "type": "Adam",
         "args":{
-            "lr": 0.001,
-            "weight_decay": 0,
+            "lr": 0.004,
+            "weight_decay": 0.01,
             "amsgrad": true
         }
     },
